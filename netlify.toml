@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Netlify — Encuesta PSS-10  →  inner-base.com/estres
+#
+# La app se exporta como HTML estático (next.config.js → output: 'export'),
+# así que Netlify solo sirve archivos: no hace falta @netlify/plugin-nextjs.
+#
+# ⚠️ IMPORTANTE
+# Con RUTA_BASE=/estres, el HTML generado referencia los assets como
+# /estres/_next/…  mientras que los archivos viven en la RAÍZ de out/.
+# Es decir: este sitio tiene que quedar servido bajo la ruta /estres.
+# Si se publica en la raíz de un dominio, la página carga pero se ve SIN
+# estilos ni JS (todos los assets darían 404).
+#
+# Ver "CÓMO CONECTARLO" al final del archivo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "20"
+  RUTA_BASE = "/estres"
+  NEXT_PUBLIC_SITE_URL = "https://inner-base.com"
+
+# Cabeceras de seguridad básicas.
+# (Antes vivían en next.config.js, pero `headers()` no se aplica en export estático.)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
+
+# Los bundles de Next llevan hash en el nombre: se pueden cachear indefinidamente.
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CÓMO CONECTARLO A inner-base.com/estres
+#
+# Netlify sirve cada sitio en la raíz de un dominio, así que para que esto
+# quede en /estres hay dos caminos:
+#
+# ── Opción 1 (recomendada): sitio aparte + proxy desde el sitio principal ──
+# 1. Este proyecto se despliega como su propio sitio Netlify
+#    (p. ej. inner-base-estres.netlify.app).
+# 2. En el netlify.toml del SITIO PRINCIPAL (inner-base.com) se añade:
+#
+#      [[redirects]]
+#        from = "/estres/*"
+#        to = "https://inner-base-estres.netlify.app/:splat"
+#        status = 200      # 200 = proxy real, la URL sigue siendo inner-base.com
+#        force = true
+#
+#    Con esto, /estres/_next/x.js llega a /_next/x.js del sitio de la encuesta
+#    y los assets resuelven bien gracias al basePath.
+#
+# ── Opción 2: mismo sitio, subcarpeta ──
+# Si inner-base.com y la encuesta se publican desde el MISMO sitio Netlify,
+# hay que mover el export a una subcarpeta durante el build, por ejemplo:
+#
+#      command = "npm run build && mkdir -p publish/estres && cp -r out/* publish/estres/"
+#      publish = "publish"
+#
+# (y copiar también ahí el sitio principal).
+# ─────────────────────────────────────────────────────────────────────────────
