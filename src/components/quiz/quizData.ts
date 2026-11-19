@@ -32,7 +32,7 @@ export const quizBands: QuizBand[] = [
     {
         max: 13, 
         key: "con-margen", 
-        name: "Con margen", 
+        name: "Estrés bajo", 
         color: "text-emerald-600",
         ledePoints: [
             { label: "Dónde estás", text: "Ahora estamos en un rango controlado." },
@@ -46,7 +46,7 @@ export const quizBands: QuizBand[] = [
     {
         max: 26, 
         key: "en-tension", 
-        name: "En tensión", 
+        name: "Estrés moderado", 
         color: "text-amber-500",
         ledePoints: [
             { label: "Dónde estás", text: "Estás en la franja donde vive la mayoría de los profesionales: funcionas, cumples, respondes, pero con el motor revolucionado casi todo el tiempo." },
@@ -60,7 +60,7 @@ export const quizBands: QuizBand[] = [
     {
         max: 40, 
         key: "al-limite", 
-        name: "Al límite", 
+        name: "Estrés alto/severo", 
         color: "text-rose-600",
         ledePoints: [
             { label: "Dónde estás", text: "Tu nivel de estrés percibido está alto." },

@@ -4,23 +4,19 @@
 // component declared in this file.
 import type { QuizQuestion as StressQuestion } from "./quizData";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState, useEffect } from "react";
 interface QuizQuestionProps {
     question: StressQuestion;
     onAnswer: (answer: number) => void;
-    onBack: () => void;
     currentGlobalIndex: number;
-    totalQuestions: number;
     savedAnswer?: number;
 }
 
 const QuizQuestion = ({
     question,
     onAnswer,
-    onBack,
     currentGlobalIndex,
-    totalQuestions,
     savedAnswer
 }: QuizQuestionProps) => {
     const [selectedScore, setSelectedScore] = useState<number | null>(savedAnswer ?? null);
@@ -51,37 +47,18 @@ const QuizQuestion = ({
     ];
 
     return (
-        <div className="w-full max-w-xl animate-in fade-in zoom-in-95 duration-300 space-y-8 text-center relative px-4">
-            {/* Progress */}
-            <div className="space-y-4">
-                <div className="flex justify-between items-center text-sm font-medium uppercase tracking-wider text-muted-foreground">
-                    <button
-                        onClick={onBack}
-                        className="flex items-center hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={currentGlobalIndex === 0}
-                    >
-                        <ArrowLeft className="mr-1 h-3 w-3" />
-                        Anterior
-                    </button>
-                    <span>Pregunta {currentGlobalIndex + 1} de {totalQuestions}</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-secondary">
-                    <div
-                        className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
-                        style={{ width: `${((currentGlobalIndex + 1) / totalQuestions) * 100}%` }}
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-6 pt-4">
+        <div className="w-full animate-in fade-in duration-200 space-y-8">
+            <div className="space-y-3 pt-4 text-center">
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">
+                    Piensa en el último mes
+                </p>
                 <h2 className="text-2xl md:text-3xl font-bold text-foreground leading-snug">
                     {question.text}
                 </h2>
-                <p className="text-muted-foreground">Selecciona la opción que mejor describa tu caso.</p>
             </div>
 
             {/* Options */}
-            <div className="grid gap-3 pt-6">
+            <div className="grid gap-3 pt-2">
                 {options.map((option) => {
                     const isSelected = selectedScore === option.value;
                     return (

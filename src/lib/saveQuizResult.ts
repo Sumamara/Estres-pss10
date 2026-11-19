@@ -52,7 +52,7 @@ export const saveQuizResult = async (submission: QuizSubmission): Promise<boolea
     });
 
     try {
-        const { error } = await supabase.from("PSS10_lead").insert(row);
+        const { error } = await supabase.from("Estres_PSS10").insert(row);
 
         if (error) {
             console.error("[PSS-10] No se pudo guardar la respuesta:", error.message);

@@ -6,21 +6,21 @@ Aplicación interactiva basada en la **Escala de Estrés Percibido (PSS-10)** de
 
 | Banda | Rango | Qué significa |
 |---|---|---|
-| 🟢 **Con margen** | 0 – 13 | Estrés controlado. Buen momento para construir habilidades preventivas. |
-| 🟡 **En tensión** | 14 – 26 | Funcionas, pero con el motor revolucionado. La zona que se normaliza. |
-| 🔴 **Al límite** | 27 – 40 | Estrés alto. Toca bajar la activación antes de organizarse. |
+| 🟢 **Estrés bajo** | 0 – 13 | Estrés controlado. Buen momento para construir habilidades preventivas. |
+| 🟡 **Estrés moderado** | 14 – 26 | Funcionas, pero con el motor revolucionado. La zona que se normaliza. |
+| 🔴 **Estrés alto/severo** | 27 – 40 | Estrés alto. Toca bajar la activación antes de organizarse. |
 
 Cada banda incluye una **habilidad específica** respaldada por investigación científica.
 
 ## 🌟 Características
 
 - **10 preguntas PSS-10** con ítems invertidos (4, 5, 7, 8) calculados automáticamente.
-- **Anillo segmentado animado** — SVG con 3 segmentos, gaps reales vía mask, indicador dot con glow, y etiquetas de rango.
+- **Medidor semicircular animado** — SVG con aguja animada, divisores por rango (`0–13`, `14–26`, `27–40`) y regla inferior de las 3 zonas.
 - **Contador animado** — el score cuenta de 0 a N con ease-out quart.
 - **Secciones colapsables** — "¿Qué significa?" y la habilidad se expanden al tocar.
 - **Flechas de flujo** — chevrons animados que guían la mirada paso a paso.
 - **CTA de WhatsApp** — enlace directo con mensaje pre-escrito para contactar.
-- **Guardado automático** — cada resultado se inserta en Supabase (tabla `PSS10_lead`) sin bloquear la UI.
+- **Guardado automático** — cada resultado se inserta en Supabase (tabla `Estres_PSS10`) sin bloquear la UI.
 - **Diseño premium** — gradientes por banda, glows radiales, tipografía Outfit/Inter, animaciones escalonadas.
 
 ## 🛠️ Tecnologías
@@ -57,7 +57,7 @@ npm run dev
 
 ## 📊 Base de datos
 
-Ejecuta el script `setup_pss10_table.sql` en el editor SQL de Supabase para crear la tabla `PSS10_lead` con las columnas necesarias.
+Configura la tabla `Estres_PSS10` en Supabase (puedes tomar como base el esquema de `setup_pss10_table.sql`) con las columnas necesarias y una política RLS de `INSERT` para `anon`.
 
 ## 📁 Estructura principal
 
@@ -76,6 +76,6 @@ src/
 │   └── ui/                 # Componentes Shadcn
 └── lib/
     ├── supabaseClient.ts   # Cliente Supabase (null-safe)
-    ├── saveQuizResult.ts   # Insert a PSS10_lead
+    ├── saveQuizResult.ts   # Insert a Estres_PSS10
     └── utils.ts            # cn() helper
 ```

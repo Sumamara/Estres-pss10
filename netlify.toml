@@ -20,7 +20,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  RUTA_BASE = "/estres-pss10"
+  # RUTA_BASE se define en Netlify (Site settings → Environment variables) y en .env.local
   NEXT_PUBLIC_SITE_URL = "https://inner-base.com"
 
 # Cabeceras de seguridad básicas.

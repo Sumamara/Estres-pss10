@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import QuizQuestion from "./QuizQuestion";
 import QuizResult from "./QuizResult";
 import QuizWelcome from "./QuizWelcome";
@@ -64,15 +65,37 @@ const QuizEngine = () => {
 
     return (
         <div className="w-full flex justify-center min-h-[450px]">
-            <QuizQuestion
-                key={currentGlobalIndex}
-                question={currentQuestion}
-                onAnswer={handleAnswer}
-                onBack={handleBack}
-                currentGlobalIndex={currentGlobalIndex}
-                totalQuestions={totalQuestions}
-                savedAnswer={answers[currentGlobalIndex] !== null ? answers[currentGlobalIndex]! : undefined}
-            />
+            <div className="w-full max-w-xl space-y-8 relative px-4">
+                {/* Barra de progreso fija: no se desmonta al cambiar de pregunta */}
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                        <button
+                            type="button"
+                            onClick={handleBack}
+                            className="flex items-center hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={currentGlobalIndex === 0}
+                        >
+                            <ArrowLeft className="mr-1 h-3 w-3" />
+                            Anterior
+                        </button>
+                        <span>Pregunta {currentGlobalIndex + 1} de {totalQuestions}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+                        <div
+                            className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                            style={{ width: `${((currentGlobalIndex + 1) / totalQuestions) * 100}%` }}
+                        />
+                    </div>
+                </div>
+
+                <QuizQuestion
+                    key={currentGlobalIndex}
+                    question={currentQuestion}
+                    onAnswer={handleAnswer}
+                    currentGlobalIndex={currentGlobalIndex}
+                    savedAnswer={answers[currentGlobalIndex] !== null ? answers[currentGlobalIndex]! : undefined}
+                />
+            </div>
         </div>
     );
 };

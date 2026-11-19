@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useId } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getStressProfile } from "./quizData";
 import { saveQuizResult } from "@/lib/saveQuizResult";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,21 @@ const BAND_STYLES: Record<string, {
     },
 };
 
+const prefersReduced = () =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Punto sobre un semicírculo (u = 0 izquierda, 1 derecha) */
+const polar = (cx: number, cy: number, r: number, u: number) => {
+    const th = Math.PI * (1 - Math.max(0, Math.min(1, u)));
+    return { x: cx + r * Math.cos(th), y: cy - r * Math.sin(th) };
+};
+
+const arcPath = (cx: number, cy: number, r: number, u0: number, u1: number) => {
+    const a = polar(cx, cy, r, u0);
+    const b = polar(cx, cy, r, u1);
+    return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${r} ${r} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+};
+
 const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResultProps) => {
     const profile = getStressProfile(answers);
     const { totalScore, band } = profile;
@@ -69,31 +84,42 @@ const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResul
     const [ledeOpen, setLedeOpen] = useState(false);
     const [skillOpen, setSkillOpen] = useState(false);
 
-    /* Unique mask id — useId emits punctuation (":r0:") that can break url(#…) refs */
-    const maskId = `ring-cut-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-
-    /* ── animated counter ──────────────────────────────── */
-    const [displayedScore, setDisplayedScore] = useState(0);
-    const [ringProgress, setRingProgress] = useState(0);
-    const hasAnimated = useRef(false);
+    /* ── animated counter & gauge needle (estilo "En preparación") ── */
+    const [exactScore, setExactScore] = useState(0);
+    const [needleAngle, setNeedleAngle] = useState(-180);
 
     useEffect(() => {
-        if (hasAnimated.current) return;
-        hasAnimated.current = true;
+        const targetAngle = -180 + 180 * (totalScore / 40);
+        if (prefersReduced()) {
+            setExactScore(totalScore);
+            setNeedleAngle(targetAngle);
+            return;
+        }
 
-        // Animate the number counting up
+        setExactScore(0);
+        setNeedleAngle(-180);
+
+        let raf = 0;
         const duration = 1200;
-        const start = performance.now();
-        const animate = (now: number) => {
-            const t = Math.min((now - start) / duration, 1);
-            const ease = 1 - Math.pow(1 - t, 4); // ease-out quart
-            setDisplayedScore(Math.round(ease * totalScore));
-            setRingProgress(ease * (totalScore / 40));
-            if (t < 1) requestAnimationFrame(animate);
+        const t = setTimeout(() => {
+            setNeedleAngle(targetAngle);
+            const start = performance.now();
+            const step = (now: number) => {
+                const p = Math.min(1, (now - start) / duration);
+                const ease = 1 - Math.pow(1 - p, 4);
+                setExactScore(ease * totalScore);
+                if (p < 1) raf = requestAnimationFrame(step);
+            };
+            raf = requestAnimationFrame(step);
+        }, 250);
+
+        return () => {
+            clearTimeout(t);
+            cancelAnimationFrame(raf);
         };
-        // Small delay so the page fades in first
-        setTimeout(() => requestAnimationFrame(animate), 300);
     }, [totalScore]);
+
+    const displayedScore = Math.round(exactScore);
 
     /* ── guardar la respuesta en Supabase ───────────────
        El ref evita insertar dos veces: en desarrollo, reactStrictMode
@@ -116,40 +142,17 @@ const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResul
         });
     }, [answers, totalScore, band.key, band.name, userName, timeSpentSeconds]);
 
-    /* ── SVG ring maths ────────────────────────────────── */
-    const SIZE = 280;
-    const STROKE = 20;
-    const RADIUS = (SIZE - STROKE) / 2;
-    const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-    const CX = (SIZE + 80) / 2;
-    const CY = (SIZE + 80) / 2;
+    /* ── Gauge semicircle maths (0 – 40) ───────────────── */
+    const CX = 150, CY = 150, R = 110, S = 26, DIV = 26;
+    const u = exactScore / 40;
+    const ink = "hsl(var(--foreground))";
+    const len = R - S / 2 - 10;
 
     const SEGMENTS = [
-        { start: 0, end: 13, color: "#10b981", label: "Con margen", range: "0 – 13" },
-        { start: 13, end: 26, color: "#f59e0b", label: "En tensión", range: "14 – 26" },
-        { start: 26, end: 40, color: "#f43f5e", label: "Al límite", range: "27 – 40" },
+        { key: "con-margen", start: 0, end: 13, color: "#10b981", label: "Estrés bajo", range: "0 – 13" },
+        { key: "en-tension", start: 13, end: 26, color: "#f59e0b", label: "Estrés moderado", range: "14 – 26" },
+        { key: "al-limite", start: 26, end: 40, color: "#f43f5e", label: "Estrés alto/severo", range: "27 – 40" },
     ];
-
-    /* Zone boundaries, each in the colour of the zone it opens:
-       green at 0, amber at 13, rose at 26. */
-    const BOUNDARIES = SEGMENTS.map((seg) => ({
-        score: seg.start,
-        color: seg.color,
-    }));
-    const CUT_WIDTH = 10;
-
-    /* Radial line across the ring at a given score. `pad` extends it past both edges. */
-    const boundaryLine = (score: number, pad: number) => {
-        const angle = (score / 40) * 2 * Math.PI - Math.PI / 2;
-        const r1 = RADIUS - STROKE / 2 - pad;
-        const r2 = RADIUS + STROKE / 2 + pad;
-        return {
-            x1: CX + r1 * Math.cos(angle),
-            y1: CY + r1 * Math.sin(angle),
-            x2: CX + r2 * Math.cos(angle),
-            y2: CY + r2 * Math.sin(angle),
-        };
-    };
 
     /* WhatsApp deep link — abre la app (o WhatsApp Web) con el mensaje ya escrito */
     const whatsappMessage = userName
@@ -157,22 +160,13 @@ const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResul
         : "Hola, me gustaría más información del taller de control de estrés.";
     const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMessage)}`;
 
-    const activeIdx = band.key === "con-margen" ? 0 : band.key === "en-tension" ? 1 : 2;
-
-
     return (
         <div className="w-full max-w-3xl mx-auto space-y-14 pb-24 px-4">
 
             {/* ═══════════════ HERO SCORE CARD ═══════════════ */}
             <div
-                className="relative pt-4 pb-14 px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-700"
+                className="relative pt-4 pb-8 px-2 sm:px-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-700"
             >
-                {/* Free-floating glow — fades naturally in all directions */}
-                <div
-                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full pointer-events-none opacity-30 blur-3xl"
-                    style={{ background: style.ringStroke }}
-                />
-
                 <div className="relative z-10 flex flex-col items-center">
                     {/* Greeting label */}
                     <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -193,206 +187,154 @@ const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResul
                         {band.name}
                     </h2>
 
-                    {/* Ring with labels */}
-                    <div className="relative mt-2" style={{ width: SIZE + 80, height: SIZE + 80 }}>
-                        <svg
-                            width={SIZE + 80}
-                            height={SIZE + 80}
-                            viewBox={`0 0 ${SIZE + 80} ${SIZE + 80}`}
-                            className="drop-shadow-lg"
-                        >
-                            {/* Mask that carves a REAL gap at each boundary. Painting a white
-                                slit looked wrong because the glow behind tints the backdrop —
-                                removing the pixels lets whatever is behind show through instead. */}
-                            <defs>
-                                <mask
-                                    id={maskId}
-                                    maskUnits="userSpaceOnUse"
-                                    x="0" y="0"
-                                    width={SIZE + 80} height={SIZE + 80}
-                                >
-                                    {/* white = keep, black = cut away */}
-                                    <rect x="0" y="0" width={SIZE + 80} height={SIZE + 80} fill="white" />
-                                    {BOUNDARIES.map((b) => {
-                                        const l = boundaryLine(b.score, 3);
-                                        return (
-                                            <line
-                                                key={`cut-${b.score}`}
-                                                x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-                                                stroke="black"
-                                                strokeWidth={CUT_WIDTH}
-                                            />
-                                        );
-                                    })}
-                                </mask>
-                            </defs>
-
-                            <g mask={`url(#${maskId})`}>
-                                {/* Neutral track */}
-                                <circle
-                                    cx={CX} cy={CY} r={RADIUS}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    className="text-muted"
-                                    strokeWidth={STROKE}
-                                    opacity={0.3}
-                                />
-
-                                {/* Progress arc — one single colour: the current band.
-                                    Butt cap on purpose: a round cap overhangs the start by
-                                    STROKE/2, and the cut at 0 would slice it, leaving an
-                                    orphaned blob just before the divider. The rounded look at
-                                    the leading edge is provided by the indicator dot below. */}
-                                <circle
-                                    cx={CX} cy={CY} r={RADIUS}
-                                    fill="none"
-                                    stroke={style.ringStroke}
-                                    strokeWidth={STROKE}
-                                    strokeLinecap="butt"
-                                    strokeDasharray={`${ringProgress * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
-                                    transform={`rotate(-90 ${CX} ${CY})`}
-                                    style={{ filter: `drop-shadow(0 0 6px ${style.ringStroke}55)` }}
-                                />
-                            </g>
-
-                            {/* Coloured divider sitting inside each carved gap */}
-                            {BOUNDARIES.map((b) => {
-                                const l = boundaryLine(b.score, 0);
-                                return (
-                                    <line
-                                        key={`div-${b.score}`}
-                                        x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-                                        stroke={b.color}
-                                        strokeWidth={3}
-                                        strokeLinecap="round"
-                                    />
-                                );
-                            })}
-
-                            {/* Indicator dot at score position */}
-                            {ringProgress > 0.01 && (() => {
-                                const angle = ringProgress * 2 * Math.PI - Math.PI / 2;
-                                const dotX = CX + RADIUS * Math.cos(angle);
-                                const dotY = CY + RADIUS * Math.sin(angle);
-                                return (
-                                    <g>
-                                        {/* Outer glow */}
-                                        <circle
-                                            cx={dotX} cy={dotY} r={STROKE / 2 + 6}
-                                            fill={style.ringStroke}
-                                            opacity={0.25}
-                                        />
-                                        {/* White ring */}
-                                        <circle
-                                            cx={dotX} cy={dotY} r={STROKE / 2 + 2}
-                                            fill="white"
-                                            stroke={style.ringStroke}
-                                            strokeWidth={3}
-                                            style={{ filter: `drop-shadow(0 2px 6px ${style.ringStroke}80)` }}
-                                        />
-                                        {/* Inner dot */}
-                                        <circle
-                                            cx={dotX} cy={dotY} r={4}
-                                            fill={style.ringStroke}
-                                        />
-                                    </g>
-                                );
-                            })()}
-
-                            {/* Range labels outside the ring */}
-                            {SEGMENTS.map((seg, i) => {
-                                const midFraction = ((seg.start + seg.end) / 2) / 40;
-                                const labelAngle = midFraction * 2 * Math.PI - Math.PI / 2;
-                                const labelR = RADIUS + 32;
-                                const lx = CX + labelR * Math.cos(labelAngle);
-                                const ly = CY + labelR * Math.sin(labelAngle);
-                                const isActive = i === activeIdx;
-                                return (
-                                    <g key={`label-${i}`}>
-                                        <text
-                                            x={lx} y={ly - 6}
-                                            textAnchor="middle"
-                                            className="fill-muted-foreground"
-                                            fontSize="10"
-                                            fontWeight="600"
-                                            opacity={isActive ? 0.9 : 0.4}
-                                        >
-                                            {seg.label}
-                                        </text>
-                                        <text
-                                            x={lx} y={ly + 7}
-                                            textAnchor="middle"
-                                            fontSize="9"
-                                            fontWeight="500"
-                                            fill={seg.color}
-                                            opacity={isActive ? 0.8 : 0.35}
-                                        >
-                                            {seg.range}
-                                        </text>
-                                    </g>
-                                );
-                            })}
-                        </svg>
-
-                        {/* Centre content */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <span
-                                className={cn(
-                                    "text-7xl font-black tabular-nums tracking-tighter bg-clip-text text-transparent bg-gradient-to-b",
-                                    style.gradient
-                                )}
+                    {/* Medidor semicircular ("En preparación") + regla de zonas */}
+                    <div className="mt-5 w-full">
+                        <div className="relative w-full mx-auto max-w-[236px]">
+                            <div
+                                className="pointer-events-none absolute -inset-x-16 -top-12 -bottom-8"
+                                style={{
+                                    background: `radial-gradient(ellipse 50% 55% at 50% 58%, ${style.ringStroke}22 0%, ${style.ringStroke}0d 45%, transparent 100%)`,
+                                }}
+                                aria-hidden="true"
+                            />
+                            <svg
+                                viewBox="22 20 256 194"
+                                className="relative w-full h-auto overflow-visible"
+                                role="img"
+                                aria-label={`Tu nivel de estrés: ${totalScore} de 40, ${band.name}`}
                             >
-                                {displayedScore}
-                            </span>
-                            <span className="text-sm font-semibold text-muted-foreground/60 tracking-widest mt-1">
-                                de 40
-                            </span>
+                                <path d={arcPath(CX, CY, R, 0, 1)} fill="none" stroke="#efece6" strokeWidth={S} />
+                                {u > 0.005 && (
+                                    <path d={arcPath(CX, CY, R, 0, u)} fill="none" stroke={style.ringStroke} strokeWidth={S} />
+                                )}
+                                {[13 / 40, 26 / 40].map((d) => {
+                                    const a = polar(CX, CY, R - DIV / 2, d);
+                                    const b = polar(CX, CY, R + DIV / 2, d);
+                                    return (
+                                        <line
+                                            key={d}
+                                            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                                            stroke={ink}
+                                            strokeWidth={3.5}
+                                            strokeLinecap="round"
+                                        />
+                                    );
+                                })}
+
+                                {/* Aguja afinada con rebote */}
+                                <g
+                                    style={{
+                                        transform: `rotate(${needleAngle}deg)`,
+                                        transformOrigin: `${CX}px ${CY}px`,
+                                        transition: "transform 1600ms cubic-bezier(0.34, 1.35, 0.64, 1)",
+                                    }}
+                                >
+                                    <path
+                                        d={`M ${CX - 9} ${CY - 3.2} L ${CX + len} ${CY - 0.8} L ${CX + len} ${CY + 0.8} L ${CX - 9} ${CY + 3.2} Z`}
+                                        fill={style.ringStroke}
+                                    />
+                                </g>
+                                <circle cx={CX} cy={CY} r="11" fill={ink} />
+                                <circle cx={CX} cy={CY} r="4" fill={style.ringStroke} />
+
+                                {/* Número y escala debajo del eje */}
+                                <text x={CX} y={CY + 58} textAnchor="middle">
+                                    <tspan
+                                        className="fill-foreground"
+                                        style={{ fontFamily: "Outfit, sans-serif", fontSize: 44, fontWeight: 700, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}
+                                    >
+                                        {displayedScore}
+                                    </tspan>
+                                    <tspan dx="6" className="fill-muted-foreground" style={{ fontSize: 15, fontWeight: 500 }}>
+                                        de 40
+                                    </tspan>
+                                </text>
+                            </svg>
                         </div>
+
+                        {/* Regla de las 3 zonas */}
+                        <ol className="mx-auto w-full max-w-[320px] pt-2 grid grid-cols-3 gap-2" aria-label="Niveles posibles">
+                            {SEGMENTS.map((seg) => {
+                                const isActive = seg.key === band.key;
+                                return (
+                                    <li
+                                        key={seg.key}
+                                        aria-current={isActive ? "true" : undefined}
+                                        className="flex flex-col items-center gap-1.5 text-center"
+                                    >
+                                        <span className="flex h-2 w-full items-end">
+                                            <span
+                                                className="w-full rounded-full"
+                                                style={{
+                                                    height: 4,
+                                                    backgroundColor: seg.color,
+                                                    opacity: isActive ? 1 : 0.28,
+                                                }}
+                                            />
+                                        </span>
+                                        <span className={cn(
+                                            "block text-[12px] leading-[1.2] [text-wrap:balance]",
+                                            isActive ? "font-semibold text-foreground" : "font-medium text-muted-foreground"
+                                        )}>
+                                            {seg.label}
+                                        </span>
+                                        <span className="text-[11px] font-medium tabular-nums text-muted-foreground/75">
+                                            {seg.range}
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ol>
                     </div>
 
-                    {/* Collapsible lede */}
-                    <div className="mt-6 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-500 delay-500 fill-mode-both">
-                        <div>
-                            {/* Trigger: question + subtle rotating chevron */}
+                    {/* Collapsible lede — tarjeta compacta estilo "cierre de jornada" */}
+                    <div className="mt-8 w-full max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-500 delay-500 fill-mode-both">
+                        <div className="bg-card border rounded-2xl shadow-sm text-left relative overflow-hidden">
+                            <div
+                                className="absolute -top-12 -right-12 w-32 h-32 rounded-full opacity-[0.06] pointer-events-none"
+                                style={{ background: `radial-gradient(circle, ${style.ringStroke}, transparent 70%)` }}
+                            />
+
                             <button
                                 type="button"
                                 onClick={() => setLedeOpen((o) => !o)}
                                 aria-expanded={ledeOpen}
-                                className="group inline-flex items-center gap-2 py-1"
+                                className="relative z-10 w-full flex items-center gap-3 p-5 md:p-6 text-left"
                             >
-                                <span className="relative text-base md:text-lg font-bold tracking-tight text-foreground/85 group-hover:text-foreground transition-colors">
-                                    ¿Qué significa estar {band.name.toLowerCase()}?
-                                    <span
-                                        className="absolute left-0 -bottom-0.5 h-[1.5px] w-full rounded-full opacity-40 group-hover:opacity-90 transition-opacity duration-300"
-                                        style={{ background: style.ringStroke }}
-                                    />
-                                </span>
-                                <ChevronDown
+                                <div className="flex-1">
+                                    <h3 className="text-base md:text-lg font-bold tracking-tight text-foreground">
+                                        ¿Qué significa tener {band.name.toLowerCase()}?
+                                    </h3>
+                                </div>
+
+                                <div
                                     className={cn(
-                                        "h-4 w-4 shrink-0 transition-transform duration-300",
-                                        ledeOpen ? "rotate-180" : "group-hover:translate-y-0.5"
+                                        "shrink-0 h-9 w-9 rounded-full border flex items-center justify-center transition-all duration-300 hover:scale-105",
+                                        ledeOpen ? "bg-primary/10 border-primary/30" : "bg-muted/50"
                                     )}
-                                    strokeWidth={2.5}
-                                    style={{ color: style.ringStroke }}
-                                />
+                                >
+                                    <ChevronDown
+                                        className={cn("h-4 w-4 transition-transform duration-300", ledeOpen && "rotate-180")}
+                                        style={{ color: style.ringStroke }}
+                                    />
+                                </div>
                             </button>
 
-                            {/* Expandable lede */}
                             <div
-                                className="grid transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
+                                className="relative z-10 grid transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
                                 style={{ gridTemplateRows: ledeOpen ? "1fr" : "0fr" }}
                             >
                                 <div className="overflow-hidden">
-                                    <div className="pt-5 space-y-5 text-left">
+                                    <div className="px-5 md:px-6 pb-5 md:pb-6 space-y-4">
                                         {band.ledePoints.map((point, i) => (
-                                            <div key={i} className="space-y-1.5">
+                                            <div key={i} className="space-y-1">
                                                 <p
                                                     className="text-[11px] font-bold uppercase tracking-widest"
                                                     style={{ color: style.ringStroke }}
                                                 >
                                                     {point.label}
                                                 </p>
-                                                <p className="text-muted-foreground text-base md:text-lg leading-relaxed font-medium">
+                                                <p className="text-muted-foreground text-sm md:text-base leading-relaxed font-medium">
                                                     {point.text}
                                                 </p>
                                             </div>
@@ -453,12 +395,6 @@ const QuizResult = ({ answers, onRetake, userName, timeSpentSeconds }: QuizResul
                         <h3 className={cn("text-3xl md:text-4xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r", style.gradient)}>
                             {band.skill}
                         </h3>
-
-                        {!skillOpen && (
-                            <p className="text-sm font-semibold text-muted-foreground animate-in fade-in duration-300">
-                                Toca para descubrir cómo aplicarla →
-                            </p>
-                        )}
                     </div>
 
                     <div
